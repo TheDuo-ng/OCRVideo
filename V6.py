@@ -222,9 +222,12 @@ class VideoOCRApp:
             
             video_capture.set_downscale_factor()
             video_capture.start()
-            
+
             total_frames = video_capture.duration.get_frames()
-            
+            if total_frames == 0:
+                self.log_message("⚠️ Video không có frame. Hủy phát hiện cảnh.", "warning")
+                return
+
             def progress_callback(frame_data, frame_num):
                 if self.stop_flag.is_set():
                     raise InterruptedError("Process stopped by user")
