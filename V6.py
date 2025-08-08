@@ -450,7 +450,13 @@ class VideoOCRApp:
             if self.stop_flag.is_set(): return
 
             srt_content = "".join("".join(self.srt_file_list[i]) for i in sorted(self.srt_file_list))
-            self.root.after(0, self.preview_srt, srt_content, lambda content: self.save_srt_and_finalize(content, subtitle_path, raw_texts_dir, texts_dir))
+            self.root.after(
+                0,
+                self.preview_srt,
+                srt_content,
+                lambda content: self.save_srt_and_finalize(content, subtitle_path, raw_texts_dir, texts_dir),
+                lambda: self.discard_ocr_results(raw_texts_dir, texts_dir),
+            )
 
         except Exception as e:
             self.log_message(f"❌ Lỗi nghiêm trọng: {e}", "error")
@@ -506,6 +512,12 @@ class VideoOCRApp:
         finally:
             self.finalize_processing(raw_texts_dir, texts_dir)
 
+    def discard_ocr_results(self, raw_texts_dir, texts_dir):
+        """Hủy bỏ kết quả OCR và đặt lại trạng thái UI."""
+        self.srt_file_list.clear()
+        self.log_message("⚠️ OCR bị hủy, kết quả không được lưu.", "warning")
+        self.finalize_processing(raw_texts_dir, texts_dir)
+
     def finalize_processing(self, raw_texts_dir, texts_dir):
         if self.nen_raw_texts_var.get() and raw_texts_dir.exists():
             try:
@@ -529,19 +541,28 @@ class VideoOCRApp:
         self.log_message(f"🎉 Hoàn thành OCR. Tổng thời gian xử lý: {formatted_time}")
         self.set_ui_state_for_processing(False)
 
-    def preview_srt(self, srt_content, save_callback):
+    def preview_srt(self, srt_content, save_callback, cancel_callback=None):
         preview_window = tk.Toplevel(self.root)
         preview_window.title("Xem trước & Chỉnh sửa phụ đề SRT")
         preview_window.geometry("600x400")
         preview_window.transient(self.root)
         preview_window.grab_set()
+
         srt_text = scrolledtext.ScrolledText(preview_window, wrap="word", undo=True)
         srt_text.pack(padx=10, pady=10, fill="both", expand=True)
         srt_text.insert(tk.END, srt_content)
+
+        def on_cancel():
+            if cancel_callback:
+                cancel_callback()
+            preview_window.destroy()
+
+        preview_window.protocol("WM_DELETE_WINDOW", on_cancel)
+
         button_frame = tk.Frame(preview_window)
         button_frame.pack(pady=(0, 10))
         tk.Button(button_frame, text="Lưu và Đóng", command=lambda: [save_callback(srt_text.get("1.0", tk.END)), preview_window.destroy()]).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Hủy bỏ", command=preview_window.destroy).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Hủy bỏ", command=on_cancel).pack(side=tk.LEFT, padx=5)
         self.root.wait_window(preview_window)
 
     def update_preset_combobox(self):
